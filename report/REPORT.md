@@ -42,27 +42,28 @@
 
 ### Domain & Lý Do Chọn
 
-**Domain:** [ví dụ: Customer support FAQ, Vietnamese law, cooking recipes, ...]
+**Domain:** Vinpearl — sản phẩm du lịch & nghỉ dưỡng (vé tham quan, combo khách sạn, spa, golf, safari)
 
 **Tại sao nhóm chọn domain này?**
-> *Viết 2-3 câu:*
+> Data Vinpearl có cấu trúc nhất quán (heading `##` + bullet) phù hợp để thử nghiệm nhiều chunking strategy khác nhau. Domain này gần với bài toán thực tế (chatbot tư vấn du lịch) và dễ viết benchmark query có gold answer rõ ràng (giá vé, dịch vụ bao gồm, điều kiện áp dụng). Ngoài ra, data đa dạng loại sản phẩm và địa điểm giúp kiểm tra khả năng filter theo metadata.
 
 ### Data Inventory
 
 | # | Tên tài liệu | Nguồn | Số ký tự | Metadata đã gán |
 |---|--------------|-------|----------|-----------------|
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
-| 5 | | | | |
+| 1 | Aquafield Nha Trang — Spa & xông hơi chuẩn Hàn | booking.vinpearl.com | 7.006 | destination=nha_trang, product_type=spa |
+| 2 | Grand World Phú Quốc | booking.vinpearl.com | 10.211 | destination=phu_quoc, product_type=theme_park |
+| 3 | VinWonders Nha Trang | booking.vinpearl.com | 6.149 | destination=nha_trang, product_type=theme_park |
+| 4 | Vinpearl Safari Phú Quốc | booking.vinpearl.com | 4.614 | destination=phu_quoc, product_type=safari |
+| 5 | [Cần Thơ] 2N1Đ Vinpearl Hotel Cần Thơ | booking.vinpearl.com | 6.964 | destination=can_tho, product_type=hotel_combo |
 
 ### Metadata Schema
 
 | Trường metadata | Kiểu | Ví dụ giá trị | Tại sao hữu ích cho retrieval? |
 |----------------|------|---------------|-------------------------------|
-| | | | |
-| | | | |
+| `destination` | string | `"nha_trang"`, `"phu_quoc"`, `"ha_noi"`, `"can_tho"` | Filter chunk theo địa điểm — tránh trả về thông tin của điểm đến khác khi user hỏi cụ thể |
+| `product_type` | string | `"spa"`, `"theme_park"`, `"hotel_combo"`, `"golf"`, `"safari"` | Filter theo loại sản phẩm — tăng precision khi query là "voucher golf" vs "vé xông hơi" |
+| `source_url` | string | `"https://booking.vinpearl.com/..."` | Truy xuất nguồn gốc chunk; dùng làm citation khi agent trả lời |
 
 ---
 
@@ -123,12 +124,13 @@ docs = [
 
 | Thành viên | Strategy | Retrieval Score (/10) | Điểm mạnh | Điểm yếu |
 |-----------|----------|----------------------|-----------|----------|
-| Tôi | | | | |
-| [Tên] | | | | |
-| [Tên] | | | | |
+| Phan Võ Trọng Tiển | SectionChunker + metadata filter | 7 | Khớp cấu trúc trang sản phẩm, filter theo `destination`/`product_type` | Section quá dài vẫn cần sub-chunk |
+| Võ Tấn Trung | Sliding Window 1000/100 | 8/10 | Giữ được nhiều ngữ cảnh trong mỗi chunk, phù hợp với câu hỏi về giá, điều khoản, chính sách hoàn huỷ và hướng dẫn sử dụng | Chunk dài nên đôi khi kéo theo thông tin phụ không cần thiết |
+| Đào Văn Tuân | ParentChildChunker (parent=800, child=200) | 8/10 (Hit@3: 4/5) | Child ngắn (200 ký tự) → vector chính xác; parent giữ đủ context cho LLM; khớp cấu trúc 2 lớp tự nhiên của data Vinpearl (`##` section → bullet) | Chunk count tăng gấp đôi so với baseline (62–81 chunks); Q1 thất bại do all-MiniLM-L6-v2 (tiếng Anh) embed "giá vé" không đủ mạnh |
+| Nguyễn Bá Thành | Semantic Chunker | 10/10 (Hit@3: 100%) | Coherence cao nhất (0.782), các câu được gom theo ngữ nghĩa đồng nhất, tránh cắt đứt ngữ cảnh | Tốc độ xử lý chậm hơn (11.86s) vì phải tính embedding cho từng câu đơn lẻ |
 
 **Strategy nào tốt nhất cho domain này? Tại sao?**
-> *Viết 2-3 câu:*
+> Theo kết quả so sánh nhóm, **Semantic Chunker** (Nguyễn Bá Thành) là strategy tốt nhất cho domain Vinpearl về **độ chính xác retrieval** (**10/10**, Hit@3 **5/5**): nó gom các câu có ngữ nghĩa gần nhau thành một chunk thống nhất, nên tránh được lỗi cắt giữa đoạn mô tả dài hoặc danh sách bullet — đúng kiểu câu hỏi benchmark của nhóm (giá, điều khoản, dịch vụ bao gồm, Night Safari). Điểm đổi lại là **chi phí xử lý cao hơn** (~11.86s) vì phải embed từng câu lúc chunking.
 
 ---
 
@@ -249,26 +251,28 @@ Chạy 5 benchmark queries của nhóm trên implementation cá nhân của bạ
 
 | # | Query | Top-1 Retrieved Chunk (tóm tắt) | Score | Relevant? | Agent Answer (tóm tắt) |
 |---|-------|--------------------------------|-------|-----------|------------------------|
-| 1 | Giá vé VinWonders Nha Trang? | "Tại sao nên đến VinWonders Nha Trang?" — giới thiệu chung | 0.7218 | Có | Trả về thông tin tổng quan VinWonders NT |
-| 2 | Các phòng trị liệu Aquafield NT? | "Các phòng trị liệu tại Aquafield Nha Trang" — header section | 0.8094 | Có | Liệt kê đúng 7 phòng xông hơi |
-| 3 | Dịch vụ Combo Cần Thơ 2N1Đ? | "1. Các dịch vụ bao gồm — 01 đêm phòng Deluxe..." | 0.7276 | Có | Mô tả đúng phòng + bữa sáng + miễn phụ thu |
-| 4 | Voucher golf Sunrise? | "Tee-time trước 8:00 — thứ 2 đến thứ 6..." | 0.6605 | Có | Trả lời đúng thời gian và ngày áp dụng |
-| 5 | Night Safari Vinpearl Safari? | "Khám Phá Thế Giới Hoang Dã tại Vinpearl Safari Phú Quốc" | 0.6913 | Có | Mô tả safari ban đêm bằng xe điện |
+| 1 | Giá vé hiện tại của VinWonders Nha Trang là bao nhiêu? | "Tại sao nên đến VinWonders Nha Trang?" — giới thiệu chung, không có giá vé | 0.7218 | Không | Không tìm được chunk chứa giá — chunk về giá bị chìm sau các chunk giới thiệu dài hơn |
+| 2 | Aquafield Nha Trang có những phòng trị liệu xông hơi nào? | "Các phòng trị liệu tại Aquafield Nha Trang" — header section | 0.8094 | Có | Liệt kê đúng 7 phòng xông hơi |
+| 3 | Combo 2N1Đ Vinpearl Hotel Cần Thơ bao gồm những dịch vụ gì? | "1. Các dịch vụ bao gồm — 01 đêm phòng Deluxe..." | 0.7199 | Có | Mô tả đúng phòng + bữa sáng + miễn phụ thu |
+| 4 | Voucher golf Sunrise áp dụng tee-time và ngày nào? | "Tee-time trước 8:00 — thứ 2 đến thứ 6..." | 0.6605 | Có | Trả lời đúng thời gian và ngày áp dụng |
+| 5 | Night Safari tại Vinpearl Safari Phú Quốc là gì? | "Khám Phá Thế Giới Hoang Dã tại Vinpearl Safari Phú Quốc" | 0.6913 | Có | Mô tả safari ban đêm bằng xe điện |
 
-**Bao nhiêu queries trả về chunk relevant trong top-3?** **5 / 5**
+**Bao nhiêu queries trả về chunk relevant trong top-3?** **4 / 5**
+
+> **Phân tích Q1 (failure):** File VinWonders NT có section giá nhưng các chunk giới thiệu dài hơn có similarity cao hơn với query "giá vé". Nguyên nhân: all-MiniLM-L6-v2 là mô hình tiếng Anh, xử lý tiếng Việt kém — từ "giá vé" không được embed đủ mạnh để phân biệt với các chunk chứa tên địa điểm. Giải pháp: dùng mô hình multilingual (e.g. `paraphrase-multilingual-MiniLM-L12-v2`) hoặc thêm BM25 hybrid search.
 
 ---
 
 ## 7. What I Learned (5 điểm — Demo)
 
 **Điều hay nhất tôi học được từ thành viên khác trong nhóm:**
-> *Viết 2-3 câu:*
+> Từ Nguyễn Bá Thành, tôi học được rằng **Semantic Chunker** — gom câu theo độ tương đồng embedding thay vì theo ký tự hay dấu xuống dòng — cho coherence score cao nhất (0.782) và Hit@3 100%. Điều này cho thấy với domain mô tả dịch vụ liên tục như Vinpearl, ranh giới chunk "tự nhiên" không phải lúc nào cũng trùng với dấu `\n` hay `##`; phải đo ngữ nghĩa thực tế mới tìm được điểm cắt đúng. Đây là lý do tại sao strategy của tôi (ParentChildChunker) vẫn còn điểm yếu dù child nhỏ — ranh giới parent được định bởi cấu trúc văn bản, không phải ngữ nghĩa.
 
 **Điều hay nhất tôi học được từ nhóm khác (qua demo):**
-> *Viết 2-3 câu:*
+> Qua demo, tôi ấn tượng nhất với một nhóm sử dụng **Agentic Chunker** — thay vì dùng rule cố định, họ để LLM tự quyết định ranh giới chunk dựa trên ngữ nghĩa từng đoạn. Kết quả cho thấy các chunk có coherence rất cao vì LLM hiểu được khi nào một ý "kết thúc" và ý mới bắt đầu, đặc biệt hiệu quả với văn bản mô tả dịch vụ dài như Vinpearl. Điều này mở ra hướng cải thiện cho strategy của tôi: thay vì dựa vào separator cứng trong RecursiveChunker, có thể dùng LLM để xác định parent boundary thông minh hơn.
 
 **Nếu làm lại, tôi sẽ thay đổi gì trong data strategy?**
-> *Viết 2-3 câu:*
+> Trước tiên, tôi sẽ dùng **mô hình embedding multilingual** (ví dụ `paraphrase-multilingual-MiniLM-L12-v2`) thay vì all-MiniLM-L6-v2 để xử lý tiếng Việt tốt hơn — Q1 thất bại chủ yếu vì vấn đề này. Thứ hai, tôi sẽ thêm trường metadata `price_range` và `includes` ngay từ lúc thu thập data, để có thể filter chính xác hơn khi query về giá hoặc dịch vụ bao gồm mà không cần phụ thuộc hoàn toàn vào semantic search.
 
 ---
 
@@ -276,12 +280,12 @@ Chạy 5 benchmark queries của nhóm trên implementation cá nhân của bạ
 
 | Tiêu chí | Loại | Điểm tự đánh giá |
 |----------|------|-------------------|
-| Warm-up | Cá nhân | / 5 |
-| Document selection | Nhóm | / 10 |
-| Chunking strategy | Nhóm | / 15 |
-| My approach | Cá nhân | / 10 |
-| Similarity predictions | Cá nhân | / 5 |
-| Results | Cá nhân | / 10 |
-| Core implementation (tests) | Cá nhân | / 30 |
-| Demo | Nhóm | / 5 |
-| **Tổng** | | **/ 100** |
+| Warm-up | Cá nhân | 5 / 5 |
+| Document selection | Nhóm |10 / 10 |
+| Chunking strategy | Nhóm | 15 / 15 |
+| My approach | Cá nhân | 9 / 10 |
+| Similarity predictions | Cá nhân | 5 / 5 |
+| Results | Cá nhân | 9 / 10 |
+| Core implementation (tests) | Cá nhân | 28 / 30 |
+| Demo | Nhóm | 4 / 5 |
+| **Tổng** | | **85 / 90** |
